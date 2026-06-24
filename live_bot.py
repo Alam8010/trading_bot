@@ -17,12 +17,12 @@ API_SECRET = os.getenv("API_SECRET")
 # SETTINGS
 # ============================================================
 SYMBOL         = "BTC/USDT"
-INTERVAL       = "15m"
+INTERVAL       = "1m"
 CANDLES        = 100
-RSI_OVERSOLD   = 30
-RSI_OVERBOUGHT = 70
+RSI_OVERSOLD   = 51
+RSI_OVERBOUGHT = 52
 TRADE_AMOUNT   = 0.001      # How much BTC per trade
-CHECK_EVERY    = 60         # Seconds between each check
+CHECK_EVERY    = 15         # Seconds between each check
 
 # ============================================================
 # CONNECT TO BINANCE TESTNET
@@ -56,13 +56,9 @@ def get_signals():
     macd_cross_down  = (last["macd"] < last["macd_signal"]) and (prev["macd"] > prev["macd_signal"])
     above_ma20       = close > last["ma20"]
 
-    if rsi < RSI_OVERSOLD and macd_cross_up:
-        signal = "STRONG_BUY"
-    elif rsi < RSI_OVERSOLD and above_ma20:
+    if rsi < RSI_OVERSOLD:
         signal = "BUY"
-    elif rsi > RSI_OVERBOUGHT and macd_cross_down:
-        signal = "STRONG_SELL"
-    elif rsi > RSI_OVERBOUGHT and not above_ma20:
+    elif rsi > RSI_OVERBOUGHT:
         signal = "SELL"
     else:
         signal = "HOLD"
