@@ -262,6 +262,76 @@
 
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+
+  /* ── TABS ── */
+  .tabs { display:flex; gap:4px; }
+  .tab-btn {
+    background:transparent; border:1px solid var(--border);
+    color:var(--muted); font-family:var(--font);
+    font-size:0.78rem; font-weight:600;
+    padding:6px 16px; border-radius:6px;
+    cursor:pointer; transition:all .2s; letter-spacing:0.3px;
+  }
+  .tab-btn:hover { border-color:var(--accent); color:var(--text); }
+  .tab-btn.active { background:var(--accent); border-color:var(--accent); color:#000; }
+
+  /* ── SCANNER VIEW ── */
+  #scannerView {
+    display:none; flex-direction:column;
+    height:calc(100vh - 58px); overflow:hidden;
+  }
+  .scanner-topbar {
+    background:var(--surface); border-bottom:1px solid var(--border);
+    padding:14px 24px; display:flex; align-items:center;
+    gap:16px; flex-wrap:wrap;
+  }
+  .scan-btn {
+    padding:8px 22px;
+    background:linear-gradient(135deg,#00b4d8,#0077b6);
+    color:#fff; font-family:var(--font); font-weight:700;
+    font-size:0.85rem; border:none; border-radius:8px;
+    cursor:pointer; transition:all .2s;
+  }
+  .scan-btn:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,180,216,.4); }
+  .scan-btn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+  .scan-status { font-family:var(--mono); font-size:0.72rem; color:var(--muted); margin-left:auto; }
+  .scan-meta-stats { display:flex; gap:24px; }
+  .sms-item .sms-val { font-family:var(--mono); font-size:1.05rem; font-weight:700; color:var(--accent); }
+  .sms-item .sms-lbl { font-size:0.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .leaderboard-wrap { flex:1; overflow-y:auto; padding:20px 24px; }
+  .lb-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  .lb-table th {
+    background:var(--surface); position:sticky; top:0; z-index:10;
+    padding:10px 12px; text-align:left; color:var(--muted);
+    font-size:0.67rem; letter-spacing:1px; text-transform:uppercase;
+    border-bottom:1px solid var(--border); font-weight:600;
+  }
+  .lb-table td { padding:10px 12px; border-bottom:1px solid rgba(30,45,66,.4); vertical-align:middle; }
+  .lb-table tr:hover td { background:rgba(255,255,255,.02); }
+  .lb-table tr:last-child td { border-bottom:none; }
+  .rank-num { font-family:var(--mono); font-weight:700; font-size:0.9rem; color:var(--muted); }
+  .rank-num.gold   { color:#ffd700; }
+  .rank-num.silver { color:#c0c0c0; }
+  .rank-num.bronze { color:#cd7f32; }
+  .coin-sym { font-family:var(--mono); font-weight:700; font-size:0.9rem; }
+  .score-bar-wrap { display:flex; align-items:center; gap:8px; }
+  .score-bar { height:6px; border-radius:3px; background:var(--border); width:80px; overflow:hidden; }
+  .score-bar-fill { height:100%; border-radius:3px; transition:width .4s; }
+  .score-num { font-family:var(--mono); font-weight:700; font-size:0.85rem; min-width:28px; }
+  .tags-cell { display:flex; gap:4px; flex-wrap:wrap; }
+  .tag { font-size:0.62rem; padding:2px 7px; border-radius:10px;
+         background:rgba(0,212,255,.1); color:var(--accent);
+         border:1px solid rgba(0,212,255,.2); white-space:nowrap; }
+  .analyze-btn {
+    padding:5px 12px; background:transparent;
+    border:1px solid var(--border); color:var(--text);
+    font-family:var(--font); font-size:0.72rem; font-weight:600;
+    border-radius:6px; cursor:pointer; transition:all .2s; white-space:nowrap;
+  }
+  .analyze-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .empty-scanner { text-align:center; padding:80px 20px; color:var(--muted); }
+  .empty-scanner .icon { font-size:3rem; opacity:.3; margin-bottom:12px; }
+  .empty-scanner p { font-size:0.85rem; }
 </style>
 </head>
 <body>
@@ -282,12 +352,16 @@
     CryptoBot Dashboard
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
+    <div class="tabs">
+      <button class="tab-btn active" id="tabBacktest" onclick="switchTab('backtest')">📊 Backtest</button>
+      <button class="tab-btn" id="tabScanner" onclick="switchTab('scanner')">🔭 Scanner</button>
+    </div>
     <span id="livePrice" style="font-family:var(--mono);font-size:0.9rem;color:var(--accent);">—</span>
     <span class="live-badge">LIVE</span>
   </div>
 </nav>
 
-<div class="shell">
+<div class="shell" id="backtestView"></div>
 
   <!-- SIDEBAR -->
   <aside>
@@ -438,6 +512,40 @@
     </div>
 
   </main>
+</div>
+
+<!-- ── SCANNER VIEW ── -->
+<div id="scannerView">
+
+  <div class="scanner-topbar">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label style="font-size:.75rem;color:var(--muted);font-weight:500;">Interval</label>
+      <select id="scanInterval" style="background:var(--card);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:.82rem;padding:6px 10px;border-radius:6px;outline:none;">
+        <option value="5m">5m</option>
+        <option value="15m" selected>15m</option>
+        <option value="1h">1h</option>
+        <option value="4h">4h</option>
+      </select>
+    </div>
+    <button class="scan-btn" id="scanBtn" onclick="runScan()">🔭 Scan Market</button>
+    <div class="scan-meta-stats" id="scanMetaStats" style="display:none;">
+      <div class="sms-item"><div class="sms-val" id="smsTotalUsdt">—</div><div class="sms-lbl">Binance Pairs</div></div>
+      <div class="sms-item"><div class="sms-val" id="smsQualified">—</div><div class="sms-lbl">Qualified</div></div>
+      <div class="sms-item"><div class="sms-val" id="smsTopScore">—</div><div class="sms-lbl">Top Score</div></div>
+    </div>
+    <span class="scan-status" id="scanStatus">Press Scan to rank all Binance USDT pairs by opportunity score</span>
+  </div>
+
+  <div class="leaderboard-wrap">
+    <div id="leaderboardContent">
+      <div class="empty-scanner">
+        <div class="icon">🔭</div>
+        <p>Click <strong>Scan Market</strong> to score all USDT pairs and find the best opportunities</p>
+        <p style="margin-top:8px;font-size:.73rem;">Filters: Volume &gt; $10M · Moving &gt; 0.5% · No stablecoins · No leveraged tokens</p>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -787,6 +895,112 @@ function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ── Tab switching ──
+function switchTab(tab) {
+  const bv = document.getElementById('backtestView');
+  const sv = document.getElementById('scannerView');
+  const tb = document.getElementById('tabBacktest');
+  const ts = document.getElementById('tabScanner');
+  if (tab === 'scanner') {
+    bv.style.display = 'none';
+    sv.style.display = 'flex';
+    tb.classList.remove('active'); ts.classList.add('active');
+  } else {
+    bv.style.display = '';
+    sv.style.display = 'none';
+    tb.classList.add('active'); ts.classList.remove('active');
+  }
+}
+
+// ── Scanner ──
+async function runScan() {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true; btn.textContent = '⏳ Scanning...';
+  document.getElementById('scanStatus').textContent = 'Fetching all Binance pairs & calculating signals — this takes ~15–25s...';
+  document.getElementById('scanMetaStats').style.display = 'none';
+
+  const interval = document.getElementById('scanInterval').value;
+  try {
+    const res  = await fetch(`/api/scan?interval=${interval}&force=true`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    renderLeaderboard(data);
+  } catch(e) {
+    document.getElementById('scanStatus').textContent = '❌ Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔭 Scan Market';
+  }
+}
+
+function scoreColor(s) {
+  return s >= 70 ? '#00e676' : s >= 50 ? '#ffd740' : s >= 30 ? '#ff9800' : '#ff3d5a';
+}
+
+function renderLeaderboard(data) {
+  const { coins, total_usdt, total_qualified, count, timestamp, cached, age } = data;
+  const cacheNote = cached ? ` · Cached (${age}s ago)` : '';
+  document.getElementById('scanStatus').textContent =
+    `Last scan: ${new Date(timestamp).toLocaleTimeString()}${cacheNote}`;
+  document.getElementById('smsTotalUsdt').textContent = total_usdt || '—';
+  document.getElementById('smsQualified').textContent = total_qualified || count;
+  document.getElementById('smsTopScore').textContent  = coins.length ? coins[0].score + '/100' : '—';
+  document.getElementById('scanMetaStats').style.display = 'flex';
+
+  if (!coins || coins.length === 0) {
+    document.getElementById('leaderboardContent').innerHTML =
+      '<div class="empty-scanner"><div class="icon">😕</div><p>No qualifying coins found</p></div>';
+    return;
+  }
+
+  const rows = coins.map((c, i) => {
+    const rankCls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    const sc      = scoreColor(c.score);
+    const chgClr  = c.change >= 0 ? '#00e676' : '#ff3d5a';
+    const rsiClr  = c.rsi < 30 ? '#00e676' : c.rsi > 70 ? '#ff3d5a' : 'var(--text)';
+    const tags    = (c.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+    const base    = c.symbol.replace('USDT','');
+    return `<tr>
+      <td><span class="rank-num ${rankCls}">#${i+1}</span></td>
+      <td><div class="coin-sym">${base}</div><div style="font-size:.65rem;color:var(--muted)">/USDT</div></td>
+      <td>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-bar-fill" style="width:${c.score}%;background:${sc}"></div></div>
+          <span class="score-num" style="color:${sc}">${c.score}</span>
+        </div>
+      </td>
+      <td>${sigBadge(c.signal)}</td>
+      <td style="font-family:var(--mono)">$${parseFloat(c.price).toLocaleString()}</td>
+      <td style="font-family:var(--mono);color:${chgClr}">${c.change >= 0 ? '+' : ''}${c.change}%</td>
+      <td style="font-family:var(--mono);color:var(--muted)">$${c.volume_m}M</td>
+      <td style="font-family:var(--mono);color:${rsiClr}">${c.rsi}</td>
+      <td><div class="tags-cell">${tags}</div></td>
+      <td><button class="analyze-btn" onclick="analyzeFromScanner('${c.symbol}')">Analyze →</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('leaderboardContent').innerHTML = `
+    <table class="lb-table">
+      <thead><tr>
+        <th>#</th><th>Coin</th><th>Score</th><th>Signal</th>
+        <th>Price</th><th>24h Chg</th><th>Volume</th><th>RSI</th>
+        <th>Tags</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function analyzeFromScanner(symbol) {
+  switchTab('backtest');
+  const sel = document.getElementById('symbol');
+  for (let o of sel.options) {
+    if (o.value === symbol) { sel.value = symbol; runBot(); return; }
+  }
+  // Coin not in dropdown — add it dynamically
+  sel.add(new Option(symbol.replace('USDT', '/USDT'), symbol, true, true));
+  sel.value = symbol;
+  runBot();
 }
 
 // ── Auto-fetch live price every 10s ──
