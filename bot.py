@@ -60,6 +60,21 @@ def calculate_indicators(df, rsi_period=14):
     df["bb_lower"]  = bb.bollinger_lband()
     df["bb_mid"]    = bb.bollinger_mavg()
     df["volume_ma"] = df["volume"].rolling(window=20).mean()
+
+    # Phase 5 indicators
+    df["mfi"]            = ta.volume.MFIIndicator(
+                               df["high"], df["low"], df["close"], df["volume"], window=14
+                           ).money_flow_index()
+    adx_ind              = ta.trend.ADXIndicator(df["high"], df["low"], df["close"], window=14)
+    df["adx"]            = adx_ind.adx()
+    df["obv"]            = ta.volume.OnBalanceVolumeIndicator(
+                               df["close"], df["volume"]
+                           ).on_balance_volume()
+    df["obv_ma"]         = df["obv"].rolling(window=5).mean()
+    df["vwap"]           = ta.volume.VolumeWeightedAveragePrice(
+                               df["high"], df["low"], df["close"], df["volume"], window=14
+                           ).volume_weighted_average_price()
+    df["supertrend_dir"] = _supertrend_direction(df)
     return df
 
 # ============================================================
@@ -133,6 +148,36 @@ def backtest(df, initial_capital=1000, risk_per_trade=0.02):
     return trades, equity_curve, stats
 
 # ============================================================
+# SUPERTREND HELPER
+# ============================================================
+def _supertrend_direction(df, period=10, multiplier=3):
+    """Returns Series: 1 = uptrend (BUY), -1 = downtrend (SELL)"""
+    try:
+        hl2   = (df['high'] + df['low']) / 2.0
+        atr   = ta.volatility.AverageTrueRange(
+                    df['high'], df['low'], df['close'], window=period
+                ).average_true_range()
+        ub    = (hl2 + multiplier * atr).values.copy()
+        lb    = (hl2 - multiplier * atr).values.copy()
+        close = df['close'].values
+        n     = len(close)
+        direction = np.ones(n)
+
+        for i in range(1, n):
+            if close[i-1] <= ub[i-1]:
+                ub[i] = min(ub[i], ub[i-1])
+            if close[i-1] >= lb[i-1]:
+                lb[i] = max(lb[i], lb[i-1])
+            if direction[i-1] == 1:
+                direction[i] = 1 if close[i] >= lb[i] else -1
+            else:
+                direction[i] = -1 if close[i] <= ub[i] else 1
+
+        return pd.Series(direction, index=df.index)
+    except Exception:
+        return pd.Series(0, index=df.index)
+
+# ============================================================
 # SCANNER FUNCTIONS
 # ============================================================
 def get_all_tickers():
@@ -178,9 +223,58 @@ def score_coin(df):
         except:
             return default
 
-    r     = df.iloc[-1]
-    p     = df.iloc[-2]
-    rsi      = safe(r['rsi'], 50)
+    r  = df.iloc[-1]
+    p  = df.iloc[-2]
+
+    rsi      = safe(r['rsi'],            50)
+    mfi      = safe(r.get('mfi',   np.nan), 50)
+    adx      = safe(r.get('adx',   np.nan),  0)
+    obv      = safe(r.get('obv',   np.nan),  0)
+    obv_ma   = safe(r.get('obv_ma',np.nan),  0)
+    vwap     = safe(r.get('vwap',  np.nan),  0)
+    st_dir   = safe(r.get('supertrend_dir', np.nan), 0)
+    close    = safe(r['close'], 0)
+    macd     = safe(r['macd'], 0)
+    macd_sig = safe(r['macd_signal'], 0)
+    macd_p   = safe(p['macd'], 0)
+    sig_p    = safe(p['macd_signal'], 0)
+    bb_low   = safe(r['bb_lower'], 0)
+    bb_high  = safe(r['bb_upper'], 0)
+
+    # 1. MFI — 15 pts
+    if   mfi < 20: score += 15; tags.append('MFI Oversold 💰')
+    elif mfi < 40: score += 10; tags.append('MFI Low')
+    elif mfi > 80: score -= 10
+
+    # 2. ADX — 15 pts
+    if   adx > 40: score += 15; tags.append('Strong Trend ↗')
+    elif adx > 25: score += 10; tags.append('ADX Trending')
+
+    # 3. Supertrend — 15 pts
+    if   st_dir == 1:  score += 15; tags.append('Supertrend ✅')
+    elif st_dir == -1: score -= 10
+
+    # 4. OBV — 15 pts
+    if obv > obv_ma: score += 15; tags.append('OBV Rising 📈')
+    else:            score -= 5
+
+    # 5. BB Position — 15 pts
+    bb_range = bb_high - bb_low
+    if bb_range > 0:
+        pos = (close - bb_low) / bb_range
+        if   pos < 0.2:  score += 15; tags.append('Near BB Low 🎯')
+        elif pos > 0.85: score -= 5
+
+    # 6. VWAP — 15 pts
+    if   vwap > 0 and close > vwap: score += 15; tags.append('Above VWAP')
+    elif vwap > 0:                  score -= 5
+
+    # 7. RSI — 10 pts
+    if   rsi < 30: score += 10; tags.append('RSI Oversold')
+    elif rsi < 45: score += 6;  tags.append('RSI Low')
+    elif rsi > 70: score -= 5
+
+    return max(0, min(100, score)), tags
     macd     = safe(r['macd'], 0)
     macd_sig = safe(r['macd_signal'], 0)
     macd_p   = safe(p['macd'], 0)
@@ -365,8 +459,187 @@ def api_top():
     except Exception as e:
         return jsonify({'success':False,'error':str(e)}), 500
 
+@app.route('/api/signals/<symbol>')
+def api_signals(symbol):
+    try:
+        interval = request.args.get('interval', '15m')
+        limit    = int(request.args.get('limit', 100))
+        df = fetch_data(symbol.upper(), interval, limit)
+        df = calculate_indicators(df)
+        r  = df.iloc[-1]
+        p  = df.iloc[-2]
+
+        def safe(val, default=0):
+            try:
+                v = float(val)
+                return default if pd.isna(v) else v
+            except:
+                return default
+
+        rsi     = safe(r['rsi'], 50)
+        mfi     = safe(r.get('mfi',   np.nan), 50)
+        adx     = safe(r.get('adx',   np.nan), 0)
+        obv     = safe(r.get('obv',   np.nan), 0)
+        obv_ma  = safe(r.get('obv_ma',np.nan), 0)
+        vwap    = safe(r.get('vwap',  np.nan), 0)
+        st_dir  = safe(r.get('supertrend_dir', np.nan), 0)
+        close   = safe(r['close'], 0)
+        bb_low  = safe(r['bb_lower'], 0)
+        bb_high = safe(r['bb_upper'], 0)
+        macd    = safe(r['macd'], 0)
+        macd_s  = safe(r['macd_signal'], 0)
+        ma20    = safe(r['ma20'], close)
+        volume  = safe(r['volume'], 0)
+        vol_ma  = safe(r['volume_ma'], volume)
+
+        bb_range = bb_high - bb_low
+        bb_pos   = round((close - bb_low) / bb_range, 3) if bb_range > 0 else 0.5
+
+        signals = [
+            {
+                'name':     'RSI',
+                'category': 'Momentum',
+                'value':    round(rsi, 1),
+                'unit':     '',
+                'score':    10 if rsi < 30 else (6 if rsi < 45 else (-5 if rsi > 70 else 0)),
+                'max':      10,
+                'status':   'oversold' if rsi < 30 else ('overbought' if rsi > 70 else 'neutral'),
+                'label':    'Oversold 🔥' if rsi < 30 else ('Overbought ⚠️' if rsi > 70 else 'Neutral'),
+            },
+            {
+                'name':     'MFI',
+                'category': 'Momentum + Volume',
+                'value':    round(mfi, 1),
+                'unit':     '',
+                'score':    15 if mfi < 20 else (10 if mfi < 40 else (-10 if mfi > 80 else 0)),
+                'max':      15,
+                'status':   'oversold' if mfi < 20 else ('overbought' if mfi > 80 else 'neutral'),
+                'label':    'Money Oversold 💰' if mfi < 20 else ('Overbought' if mfi > 80 else 'Neutral'),
+            },
+            {
+                'name':     'ADX',
+                'category': 'Trend Strength',
+                'value':    round(adx, 1),
+                'unit':     '',
+                'score':    15 if adx > 40 else (10 if adx > 25 else 0),
+                'max':      15,
+                'status':   'strong' if adx > 40 else ('trending' if adx > 25 else 'weak'),
+                'label':    'Strong Trend ↗' if adx > 40 else ('Trending' if adx > 25 else 'No Trend'),
+            },
+            {
+                'name':     'Supertrend',
+                'category': 'Trend Direction',
+                'value':    int(st_dir),
+                'unit':     '',
+                'score':    15 if st_dir == 1 else (-10 if st_dir == -1 else 0),
+                'max':      15,
+                'status':   'bullish' if st_dir == 1 else ('bearish' if st_dir == -1 else 'neutral'),
+                'label':    'Uptrend ✅' if st_dir == 1 else ('Downtrend ❌' if st_dir == -1 else 'Neutral'),
+            },
+            {
+                'name':     'OBV',
+                'category': 'Volume Flow',
+                'value':    round(obv, 0),
+                'unit':     '',
+                'score':    15 if obv > obv_ma else -5,
+                'max':      15,
+                'status':   'bullish' if obv > obv_ma else 'bearish',
+                'label':    'Money Flowing In 📈' if obv > obv_ma else 'Money Flowing Out 📉',
+            },
+            {
+                'name':     'BB Position',
+                'category': 'Volatility',
+                'value':    round(bb_pos * 100, 1),
+                'unit':     '%',
+                'score':    15 if bb_pos < 0.2 else (-5 if bb_pos > 0.85 else 0),
+                'max':      15,
+                'status':   'oversold' if bb_pos < 0.2 else ('overbought' if bb_pos > 0.85 else 'neutral'),
+                'label':    'Near Band Bottom 🎯' if bb_pos < 0.2 else ('Near Band Top' if bb_pos > 0.85 else f'{round(bb_pos*100)}% of Band'),
+            },
+            {
+                'name':     'VWAP',
+                'category': 'Price Level',
+                'value':    round(vwap, 4) if vwap > 0 else 0,
+                'unit':     '',
+                'score':    15 if (vwap > 0 and close > vwap) else (-5 if vwap > 0 else 0),
+                'max':      15,
+                'status':   'bullish' if (vwap > 0 and close > vwap) else 'bearish',
+                'label':    'Price Above VWAP ✅' if (vwap > 0 and close > vwap) else 'Price Below VWAP ⚠️',
+            },
+        ]
+
+        total_score = max(0, min(100, sum(s['score'] for s in signals)))
+
+        overall = 'STRONG_BUY' if total_score >= 70 else \
+                  'BUY'        if total_score >= 50 else \
+                  'SELL'       if total_score <= 20 else \
+                  'STRONG_SELL'if total_score <= 10 else 'HOLD'
+
+        return jsonify({
+            'success': True,
+            'symbol':  symbol.upper(),
+            'price':   round(close, 6),
+            'score':   total_score,
+            'signal':  overall,
+            'signals': signals,
+            'macd':    round(macd, 4),
+            'macd_signal': round(macd_s, 4),
+            'ma20':    round(ma20, 4),
+            'volume':  round(volume, 0),
+            'vol_ma':  round(vol_ma, 0),
+            'timestamp': str(df['timestamp'].iloc[-1]),
+        })
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Bot status shared state (written by live_bot, read by dashboard) ──
+_bot_status = {
+    'running':      False,
+    'symbol':       'BTC/USDT',
+    'in_position':  False,
+    'last_signal':  'N/A',
+    'last_rsi':     0,
+    'last_price':   0,
+    'usdt_balance': 0,
+    'btc_balance':  0,
+    'last_check':   None,
+    'log':          [],   # last 50 entries
+}
+
+@app.route('/api/bot/status')
+def api_bot_status():
+    return jsonify({'success': True, **_bot_status})
+
+@app.route('/api/bot/update', methods=['POST'])
+def api_bot_update():
+    """live_bot.py calls this every cycle to push its state to the dashboard."""
+    global _bot_status
+    try:
+        data = request.json or {}
+        _bot_status.update({k: v for k, v in data.items() if k != 'log'})
+        if 'log_entry' in data:
+            _bot_status['log'].insert(0, {
+                'time':    datetime.now().strftime('%H:%M:%S'),
+                'message': data['log_entry'],
+            })
+            _bot_status['log'] = _bot_status['log'][:50]  # keep last 50
+        _bot_status['running']    = True
+        _bot_status['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == "__main__":
     print("\n🤖 Trading Bot GUI Starting...")
+    print("=" * 45)
+    print("  Open your browser and go to:")
+    print("  👉  http://localhost:5000")
+    print("=" * 45)
+    app.run(debug=False, port=5000)
     print("=" * 45)
     print("  Open your browser and go to:")
     print("  👉  http://localhost:5000")

@@ -2,9 +2,10 @@ import ccxt
 import time
 import pandas as pd
 import ta
+import requests as req
 from datetime import datetime
-import os                          # ← ADD THIS
-from dotenv import load_dotenv     # ← ADD THIS
+import os
+from dotenv import load_dotenv
 
 load_dotenv()                      # ← ADD THIS (before line 10)
 # ============================================================
@@ -139,8 +140,23 @@ def run():
         except Exception as e:
             print(f"  ❌ Error: {e}")
 
-        print(f"  💤 Sleeping {CHECK_EVERY}s until next check...")
-        time.sleep(CHECK_EVERY)
+        # ── Push status to dashboard ──
+            try:
+                req.post("http://localhost:5000/api/bot/update", json={
+                    'symbol':       SYMBOL,
+                    'in_position':  in_position,
+                    'last_signal':  signal,
+                    'last_rsi':     rsi,
+                    'last_price':   price,
+                    'usdt_balance': usdt,
+                    'btc_balance':  btc,
+                    'log_entry':    f"{signal} | RSI {rsi} | ${price:,} | {'IN' if in_position else 'OUT'}",
+                }, timeout=2)
+            except Exception:
+                pass  # dashboard offline is fine, bot keeps running
+
+            print(f"  💤 Sleeping {CHECK_EVERY}s until next check...")
+            time.sleep(CHECK_EVERY)
 
 if __name__ == "__main__":
     run()
