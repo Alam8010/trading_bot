@@ -210,6 +210,11 @@ tr:last-child td { border-bottom:none; }
 .log-msg.buy  { color:var(--green); }
 .log-msg.sell { color:var(--red); }
 .log-msg.hold { color:var(--muted); }
+
+#botLog {
+  max-height: 320px;
+  overflow-y: auto;
+}
 .log-empty    { font-size:12px; color:var(--muted); }
 
 ::-webkit-scrollbar       { width:4px; }
