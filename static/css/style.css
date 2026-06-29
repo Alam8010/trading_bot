@@ -217,6 +217,14 @@ tr:last-child td { border-bottom:none; }
 }
 .log-empty    { font-size:12px; color:var(--muted); }
 
+/* ── Phase 8: Trade History ── */
+.trade-row { border-bottom:1px solid var(--border); transition:background .15s; }
+.trade-win:hover  { background:rgba(63,185,80,.05); }
+.trade-loss:hover { background:rgba(248,81,73,.05); }
+#tradeHistoryTable th { color:var(--muted); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+#tradeHistoryTable td { padding:8px 10px; font-size:11px; font-family:var(--mono); border-bottom:1px solid rgba(48,54,61,.4); }
+#tradeHistoryTable tr:last-child td { border-bottom:none; }
+
 ::-webkit-scrollbar       { width:4px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }

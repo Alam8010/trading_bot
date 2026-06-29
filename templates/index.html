@@ -263,6 +263,42 @@
       <span id="sigTotalSig" style="margin-left:8px"></span>
     </div>
 
+   <!-- ── Trade History Card ── -->
+    <div class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>📜 Trade History</span>
+        <button class="analyze-btn" onclick="loadTradeHistory()">↺ Refresh</button>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+        <div class="sig-kpi" style="--kpi-color:var(--accent);flex:1;min-width:120px;">
+          <div class="kpi-label">Total Trades</div>
+          <div class="kpi-value" id="trTotalTrades">—</div>
+        </div>
+        <div class="sig-kpi" style="--kpi-color:var(--green);flex:1;min-width:120px;">
+          <div class="kpi-label">Win Rate</div>
+          <div class="kpi-value" id="trWinRate">—</div>
+        </div>
+        <div class="sig-kpi" style="--kpi-color:var(--yellow);flex:1;min-width:120px;">
+          <div class="kpi-label">Total P&amp;L</div>
+          <div class="kpi-value" id="trTotalPnl">—</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto;max-height:340px;overflow-y:auto;">
+        <table id="tradeHistoryTable" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>Time</th><th>Coin</th><th>Entry</th><th>Exit</th>
+              <th>Amount</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="tradeHistoryBody">
+            <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- end trade history card -->
+
     <div class="bot-grid">
       <div class="card">
         <div class="card-title">

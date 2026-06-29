@@ -107,7 +107,7 @@ function renderBotStatus(d) {
     <div class="bot-kv"><span class="bot-kv-key">RSI</span><span class="bot-kv-val" style="color:${d.last_rsi<30?'var(--green)':d.last_rsi>70?'var(--red)':'var(--text)'}">${d.last_rsi||'—'}</span></div>
     <div class="bot-kv"><span class="bot-kv-key">Price</span><span class="bot-kv-val">$${parseFloat(d.last_price||0).toLocaleString()}</span></div>
     <div class="bot-kv"><span class="bot-kv-key">USDT Free</span><span class="bot-kv-val">$${d.usdt_balance||'—'}</span></div>
-    <div class="bot-kv"><span class="bot-kv-key">BTC Held</span><span class="bot-kv-val">${d.btc_balance||'—'} BTC</span></div>
+    <div class="bot-kv"><span class="bot-kv-key">Open Positions</span><span class="bot-kv-val" style="color:var(--accent)">${d.btc_balance||'0'} / 3</span></div>
     <div class="bot-kv"><span class="bot-kv-key">Last Check</span><span class="bot-kv-val" style="color:var(--muted)">${d.last_check||'—'}</span></div>`;
 
   const log = d.log || [];
@@ -121,3 +121,58 @@ function renderBotStatus(d) {
 // Passive poll every 20s regardless of active tab
 setInterval(fetchBotStatus, 20000);
 fetchBotStatus();
+
+// ── Trade History ─────────────────────────────────────
+function loadTradeHistory() {
+  fetch('/api/trades')
+    .then(r => r.json())
+    .then(data => {
+      const summary = data.summary || {};
+
+      document.getElementById('trTotalTrades').textContent =
+        summary.total_trades != null ? summary.total_trades : '—';
+
+      const wrEl = document.getElementById('trWinRate');
+      wrEl.textContent = summary.win_rate != null
+        ? summary.win_rate.toFixed(1) + '%' : '—';
+
+      const pnlEl = document.getElementById('trTotalPnl');
+      const pnl   = summary.total_pnl_usdt;
+      if (pnl != null) {
+        pnlEl.textContent  = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' $';
+        pnlEl.style.color  = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      } else {
+        pnlEl.textContent = '—';
+        pnlEl.style.color = '';
+      }
+
+      const tbody  = document.getElementById('tradeHistoryBody');
+      const trades = data.trades || [];
+      if (!trades.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">No trades yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = trades.map(t => {
+        const win      = t.pnl_usdt >= 0;
+        const rowClass = 'trade-row ' + (win ? 'trade-win' : 'trade-loss');
+        const col      = win ? 'var(--green)' : 'var(--red)';
+        const ts       = t.timestamp
+          ? new Date(t.timestamp).toLocaleString([], {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+          : '—';
+        return `<tr class="${rowClass}">
+          <td>${ts}</td>
+          <td style="color:var(--accent);font-weight:600;">${t.coin}</td>
+          <td>${Number(t.entry_price).toFixed(4)}</td>
+          <td>${Number(t.exit_price).toFixed(4)}</td>
+          <td>${Number(t.amount).toFixed(4)}</td>
+          <td style="color:${col}">${(t.pnl_usdt >= 0 ? '+' : '') + Number(t.pnl_usdt).toFixed(3)}</td>
+          <td style="color:${col}">${(t.pnl_pct >= 0 ? '+' : '') + Number(t.pnl_pct).toFixed(2)}%</td>
+          <td style="color:var(--muted);font-size:10px;">${t.reason || '—'}</td>
+        </tr>`;
+      }).join('');
+    })
+    .catch(err => console.error('Trade history fetch error:', err));
+}
+
+loadTradeHistory();
+setInterval(loadTradeHistory, 30000);

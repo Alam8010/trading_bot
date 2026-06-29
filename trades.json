@@ -1,0 +1,123 @@
+[
+  {
+    "id": 1,
+    "coin": "TRX/USDT",
+    "entry_price": 0.32,
+    "exit_price": 0.32,
+    "amount": 46.875,
+    "pnl_usdt": 0.0,
+    "pnl_pct": 0.0,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:31:20"
+  },
+  {
+    "id": 2,
+    "coin": "SOL/USDT",
+    "entry_price": 72.45,
+    "exit_price": 72.48,
+    "amount": 0.207039,
+    "pnl_usdt": 0.0062,
+    "pnl_pct": 0.04,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:32:11"
+  },
+  {
+    "id": 3,
+    "coin": "ACT/USDT",
+    "entry_price": 0.01,
+    "exit_price": 0.01,
+    "amount": 1500.0,
+    "pnl_usdt": 0.0,
+    "pnl_pct": 0.0,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:38:36"
+  },
+  {
+    "id": 4,
+    "coin": "LTC/USDT",
+    "entry_price": 42.32,
+    "exit_price": 42.35,
+    "amount": 0.354442,
+    "pnl_usdt": 0.0106,
+    "pnl_pct": 0.07,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:42:14"
+  },
+  {
+    "id": 5,
+    "coin": "\u5e01\u5b89\u4eba\u751f/USDT",
+    "entry_price": 0.71,
+    "exit_price": 0.71,
+    "amount": 21.126761,
+    "pnl_usdt": 0.0,
+    "pnl_pct": 0.0,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:49:05"
+  },
+  {
+    "id": 6,
+    "coin": "BNB/USDT",
+    "entry_price": 553.54,
+    "exit_price": 553.69,
+    "amount": 0.027098,
+    "pnl_usdt": 0.0041,
+    "pnl_pct": 0.03,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:54:51"
+  },
+  {
+    "id": 7,
+    "coin": "LTC/USDT",
+    "entry_price": 42.37,
+    "exit_price": 42.36,
+    "amount": 0.354024,
+    "pnl_usdt": -0.0035,
+    "pnl_pct": -0.02,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:55:16"
+  },
+  {
+    "id": 8,
+    "coin": "SOL/USDT",
+    "entry_price": 72.57,
+    "exit_price": 72.72,
+    "amount": 0.206697,
+    "pnl_usdt": 0.031,
+    "pnl_pct": 0.21,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:57:03"
+  },
+  {
+    "id": 9,
+    "coin": "MANTA/USDT",
+    "entry_price": 0.08,
+    "exit_price": 0.08,
+    "amount": 187.5,
+    "pnl_usdt": 0.0,
+    "pnl_pct": 0.0,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:57:53"
+  },
+  {
+    "id": 10,
+    "coin": "DOGE/USDT",
+    "entry_price": 0.07,
+    "exit_price": 0.07,
+    "amount": 214.285714,
+    "pnl_usdt": 0.0,
+    "pnl_pct": 0.0,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 13:58:38"
+  },
+  {
+    "id": 11,
+    "coin": "LTC/USDT",
+    "entry_price": 42.34,
+    "exit_price": 42.35,
+    "amount": 0.354275,
+    "pnl_usdt": 0.0035,
+    "pnl_pct": 0.02,
+    "reason": "SIGNAL",
+    "timestamp": "2026-06-29 14:02:48"
+  }
+]
