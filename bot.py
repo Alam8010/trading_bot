@@ -595,6 +595,70 @@ def api_signals(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ============================================================
+# TRADE HISTORY — saved to trades.json
+# ============================================================
+import json
+from pathlib import Path
+
+TRADES_FILE = Path("trades.json")
+
+def _load_trades():
+    if TRADES_FILE.exists():
+        try:
+            return json.loads(TRADES_FILE.read_text())
+        except Exception:
+            return []
+    return []
+
+def _save_trades(trades):
+    TRADES_FILE.write_text(json.dumps(trades, indent=2))
+
+@app.route('/api/trades', methods=['GET'])
+def api_get_trades():
+    try:
+        trades = _load_trades()
+        wins   = [t for t in trades if t.get('pnl_usdt', 0) > 0]
+        losses = [t for t in trades if t.get('pnl_usdt', 0) <= 0]
+        total_pnl = round(sum(t.get('pnl_usdt', 0) for t in trades), 4)
+        win_rate  = round(len(wins) / len(trades) * 100, 1) if trades else 0
+        return jsonify({
+            'success': True,
+            'total_trades': len(trades),
+            'wins': len(wins),
+            'losses': len(losses),
+            'win_rate': win_rate,
+            'total_pnl': total_pnl,
+            'trades': trades[-20:][::-1],   # last 20, newest first
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/trades', methods=['POST'])
+def api_post_trade():
+    try:
+        data = request.json or {}
+        required = {'coin', 'entry_price', 'exit_price', 'amount', 'pnl_usdt', 'pnl_pct', 'reason'}
+        if not required.issubset(data):
+            return jsonify({'success': False, 'error': 'Missing fields'}), 400
+        trades = _load_trades()
+        trade = {
+            'id': len(trades) + 1,
+            'coin': data['coin'],
+            'entry_price': round(float(data['entry_price']), 6),
+            'exit_price':  round(float(data['exit_price']),  6),
+            'amount':      round(float(data['amount']),       6),
+            'pnl_usdt':    round(float(data['pnl_usdt']),    4),
+            'pnl_pct':     round(float(data['pnl_pct']),     2),
+            'reason':      data['reason'],
+            'timestamp':   datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        trades.append(trade)
+        _save_trades(trades)
+        return jsonify({'success': True, 'trade': trade})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ── Bot status shared state (written by live_bot, read by dashboard) ──
 _bot_status = {
     'running':      False,
