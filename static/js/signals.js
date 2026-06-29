@@ -122,6 +122,100 @@ function renderBotStatus(d) {
 setInterval(fetchBotStatus, 20000);
 fetchBotStatus();
 
+// ── Bot Controls ─────────────────────────────────────
+let _botRunning = false;
+
+function toggleBot() {
+  const btn      = document.getElementById('botToggleBtn');
+  const endpoint = _botRunning ? '/api/bot/stop' : '/api/bot/start';
+  btn.disabled   = true;
+  btn.textContent = '⏳ Please wait...';
+  fetch(endpoint, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        _botRunning = !_botRunning;
+        updateBotBtn();
+        document.getElementById('ctrlStatus').textContent =
+          _botRunning ? '✅ Bot started' : '🛑 Bot stopped';
+      } else {
+        document.getElementById('ctrlStatus').textContent = '❌ ' + (data.error || 'Failed');
+      }
+    })
+    .catch(() => {
+      document.getElementById('ctrlStatus').textContent = '❌ Could not reach server';
+    })
+    .finally(() => { btn.disabled = false; });
+}
+
+function updateBotBtn() {
+  const btn = document.getElementById('botToggleBtn');
+  if (_botRunning) {
+    btn.textContent  = '⏹ Stop Bot';
+    btn.style.background = 'var(--red)';
+  } else {
+    btn.textContent  = '▶ Start Bot';
+    btn.style.background = '';
+  }
+}
+
+function setSlots(n) {
+  fetch('/api/settings', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({max_positions: n})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      [1,2,3].forEach(i => {
+        document.getElementById('slot' + i).classList.toggle('active', i === n);
+      });
+      document.getElementById('ctrlStatus').textContent = `✅ Max positions set to ${n}`;
+    }
+  });
+}
+
+function saveTradeAmt() {
+  const val = parseFloat(document.getElementById('tradeAmtInput').value);
+  if (isNaN(val) || val < 10) {
+    document.getElementById('ctrlStatus').textContent = '❌ Minimum $10';
+    return;
+  }
+  fetch('/api/settings', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({trade_usdt: val})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      document.getElementById('ctrlStatus').textContent = `✅ Trade amount set to $${val}`;
+    }
+  });
+}
+
+// Load current settings into controls on page load
+fetch('/api/settings')
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) return;
+    const s = data.settings;
+    document.getElementById('tradeAmtInput').value = s.trade_usdt || 15;
+    const slots = s.max_positions || 3;
+    [1,2,3].forEach(i => {
+      document.getElementById('slot' + i).classList.toggle('active', i === slots);
+    });
+  });
+
+// Sync bot running state with status polls
+const _origRenderBotStatus = renderBotStatus;
+renderBotStatus = function(d) {
+  _origRenderBotStatus(d);
+  _botRunning = d.running;
+  updateBotBtn();
+};
+
 // ── Trade History ─────────────────────────────────────
 function loadTradeHistory() {
   fetch('/api/trades')

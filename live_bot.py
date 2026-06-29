@@ -15,18 +15,28 @@ load_dotenv()
 API_KEY        = os.getenv("API_KEY")
 API_SECRET     = os.getenv("API_SECRET")
 
-INTERVAL       = "15m"
-CANDLES        = 100
-TRADE_USDT     = 15      # spend $15 per trade (safely above $10 minimum)
-CHECK_EVERY    = 15       # seconds between each trading check
-SCAN_EVERY     = 300      # seconds between scanner calls (5 min)
-MIN_SCORE       = 40       # minimum 7-signal score to consider buying
+INTERVAL        = "15m"
+CANDLES         = 100
+CHECK_EVERY     = 15
+SCAN_EVERY      = 300
+MIN_SCORE       = 55
 RSI_OVERSOLD    = 30
 RSI_OVERBOUGHT  = 70
-STOP_LOSS_PCT   = 5.0      # sell if price drops 5% from entry
-TAKE_PROFIT_PCT = 8.0      # sell if price rises 8% from entry
+STOP_LOSS_PCT   = 5.0
+TAKE_PROFIT_PCT = 8.0
 DASHBOARD_URL   = "http://localhost:5000"
-MAX_POSITIONS   = 3        # maximum simultaneous open trades
+
+def load_settings():
+    """Load live settings from dashboard's settings.json."""
+    try:
+        r = req.get(f"{DASHBOARD_URL}/api/settings", timeout=3)
+        s = r.json().get('settings', {})
+        return int(s.get('max_positions', 3)), float(s.get('trade_usdt', 15))
+    except Exception:
+        return 3, 15.0
+
+MAX_POSITIONS, TRADE_USDT = load_settings()
+print(f"  ⚙️  Settings loaded: max_positions={MAX_POSITIONS}, trade_usdt=${TRADE_USDT}")
 
 # ============================================================
 # CONNECT TO BINANCE TESTNET
@@ -187,6 +197,7 @@ def run():
 
     # positions = list of dicts: {symbol, entry_price, amount, sl_price, tp_price}
     positions = []
+    global MAX_POSITIONS, TRADE_USDT
 
     # ── Startup: resume any existing holdings ──
     print("  🔍 Checking existing balances...")
@@ -247,6 +258,8 @@ def run():
 
             # ── Scanner: fill empty slots every SCAN_EVERY seconds ──
             if time.time() - last_scan > SCAN_EVERY:
+                MAX_POSITIONS, TRADE_USDT = load_settings()
+                slots_free = MAX_POSITIONS - len(positions)
                 if slots_free <= 0:
                     print(f"  📌 All {MAX_POSITIONS} slots filled — skipping scanner")
                 else:
@@ -264,7 +277,7 @@ def run():
                             print(f"\n  🟢 BUYING ${TRADE_USDT} of {base_cur} ({trade_amount}) at ${cur_price} (Score {best_score})")
                             order = place_order("buy", ccxt_sym, trade_amount)
                             if order:
-                                sl = round(cur_price * (1 - STOP_LOSS_PCT   / 100), 4)
+                                sl = round(cur_price * (1 - STOP_LOSS_PCT / 100), 4)
                                 tp = round(cur_price * (1 + TAKE_PROFIT_PCT / 100), 4)
                                 positions.append({
                                     'symbol':      ccxt_sym,
@@ -273,7 +286,7 @@ def run():
                                     'sl_price':    sl,
                                     'tp_price':    tp,
                                 })
-                                usdt -= TRADE_USDT   # optimistic deduction
+                                usdt -= TRADE_USDT
                                 print(f"  📊 SL: ${sl} | TP: ${tp}")
                     else:
                         print(f"  ⏳ No qualifying coins found (need score ≥ {MIN_SCORE})")
@@ -325,7 +338,7 @@ def run():
                         to_close.append(pos)
 
                 # ── SIGNAL SELL ──
-                elif score < 30 or rsi > RSI_OVERBOUGHT:
+                elif score < 25 or rsi > RSI_OVERBOUGHT:
                     print(f"    🔴 SIGNAL SELL — {sym} score:{score} rsi:{rsi}")
                     order = place_order("sell", sym, base_bal)
                     if order:

@@ -659,6 +659,73 @@ def api_post_trade():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ============================================================
+# SETTINGS — read/write by dashboard controls
+# ============================================================
+import subprocess, sys
+SETTINGS_FILE = Path("settings.json")
+_bot_process  = None   # holds the live_bot subprocess handle
+
+def _load_settings():
+    defaults = {'max_positions': 3, 'trade_usdt': 15}
+    if SETTINGS_FILE.exists():
+        try:
+            saved = json.loads(SETTINGS_FILE.read_text())
+            defaults.update(saved)
+        except Exception:
+            pass
+    return defaults
+
+def _save_settings(s):
+    SETTINGS_FILE.write_text(json.dumps(s, indent=2))
+
+@app.route('/api/settings', methods=['GET'])
+def api_get_settings():
+    return jsonify({'success': True, 'settings': _load_settings()})
+
+@app.route('/api/settings', methods=['POST'])
+def api_post_settings():
+    try:
+        data = request.json or {}
+        s    = _load_settings()
+        if 'max_positions' in data:
+            s['max_positions'] = max(1, min(5, int(data['max_positions'])))
+        if 'trade_usdt' in data:
+            s['trade_usdt'] = max(10, float(data['trade_usdt']))
+        _save_settings(s)
+        return jsonify({'success': True, 'settings': s})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bot/start', methods=['POST'])
+def api_bot_start():
+    global _bot_process
+    try:
+        if _bot_process and _bot_process.poll() is None:
+            return jsonify({'success': False, 'error': 'Bot already running'})
+        _bot_process = subprocess.Popen(
+            [sys.executable, '-u', 'live_bot.py'],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stdout=None,
+            stderr=None
+        )
+        return jsonify({'success': True, 'pid': _bot_process.pid})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bot/stop', methods=['POST'])
+def api_bot_stop():
+    global _bot_process, _bot_status
+    try:
+        if _bot_process and _bot_process.poll() is None:
+            _bot_process.terminate()
+            _bot_process.wait(timeout=5)
+        _bot_process = None
+        _bot_status['running'] = False
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ── Bot status shared state (written by live_bot, read by dashboard) ──
 _bot_status = {
     'running':      False,
@@ -703,9 +770,4 @@ if __name__ == "__main__":
     print("  Open your browser and go to:")
     print("  👉  http://localhost:5000")
     print("=" * 45)
-    app.run(debug=False, port=5000)
-    print("=" * 45)
-    print("  Open your browser and go to:")
-    print("  👉  http://localhost:5000")
-    print("=" * 45)
-    app.run(debug=False, port=5000)
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
