@@ -42,14 +42,29 @@ exchange.set_sandbox_mode(True)
 # ============================================================
 def get_best_coin():
     try:
-        r = req.get(f"{DASHBOARD_URL}/api/top", timeout=10)
+        r = req.get(f"{DASHBOARD_URL}/api/scan", timeout=15)
         data = r.json()
-        if data.get('success') and data.get('coin'):
-            coin = data['coin']
-            symbol = coin['symbol']          # e.g. "AAVEUSDT"
-            score  = coin.get('score', 0)
-            # convert Binance symbol to ccxt format: AAVEUSDT → AAVE/USDT
+        if not data.get('success'):
+            return None, 0
+        for coin in data.get('coins', []):
+            symbol   = coin['symbol']
+            score    = coin.get('score', 0)
+            if score < MIN_SCORE:
+                break  # list is sorted, no point continuing
             ccxt_sym = symbol[:-4] + '/USDT'
+            # verify this coin is actually tradeable on testnet right now
+            try:
+                ohlcv = exchange.fetch_ohlcv(ccxt_sym, INTERVAL, limit=5)
+                if not ohlcv or len(ohlcv) < 2:
+                    print(f"  ⚠️  {ccxt_sym} has no candle data — skipping")
+                    continue
+                last_price = float(ohlcv[-1][4])
+                if last_price <= 0:
+                    print(f"  ⚠️  {ccxt_sym} price is $0 — skipping")
+                    continue
+            except Exception as e:
+                print(f"  ⚠️  {ccxt_sym} not fetchable: {e} — skipping")
+                continue
             return ccxt_sym, score
     except Exception as e:
         print(f"  ⚠️  Scanner unavailable: {e}")
@@ -99,6 +114,26 @@ def get_balance():
         return 0, {}
 
 # ============================================================
+# POST COMPLETED TRADE TO DASHBOARD
+# ============================================================
+def post_trade(entry_price, exit_price, amount, reason):
+    try:
+        pnl_usdt = round((exit_price - entry_price) * amount, 4)
+        pnl_pct  = round((exit_price - entry_price) / entry_price * 100, 2)
+        req.post("http://localhost:5000/api/trades", json={
+            'coin':        coin,
+            'entry_price': entry_price,
+            'exit_price':  exit_price,
+            'amount':      amount,
+            'pnl_usdt':    pnl_usdt,
+            'pnl_pct':     pnl_pct,
+            'reason':      reason,
+        }, timeout=3)
+        print(f"  📝 Trade logged: PnL ${pnl_usdt:+.4f} ({pnl_pct:+.2f}%) | {reason}")
+    except Exception as e:
+        print(f"  ⚠️ Could not log trade: {e}")
+
+# ============================================================
 # PLACE ORDER
 # ============================================================
 def place_order(side, symbol, amount):
@@ -144,22 +179,61 @@ def run():
 
     SYMBOL      = "BTC/USDT"   # default, scanner will override
     # Check if we already hold a position from a previous run
+    # Scan ALL non-USDT balances above $1 value to find any held coin
     print("  🔍 Checking existing balances...")
     usdt_check, full_bal_check = get_balance()
-    base_check = SYMBOL.split('/')[0]
-    held = round(full_bal_check.get(base_check, {}).get('free', 0), 6) if isinstance(full_bal_check, dict) else 0
+    in_position   = False
+    bought_amount = 0
+    entry_price   = 0
 
-    if held > 0.001:
-        in_position   = True
-        bought_amount = held
-        entry_price   = 0    # unknown since we restarted — SL/TP won't trigger until next buy
-        print(f"  ⚠️  Resuming with existing position: {held} {base_check}")
-        print(f"  ⚠️  Entry price unknown — SL/TP disabled until next fresh buy")
+    if isinstance(full_bal_check, dict):
+        for currency, bal_info in full_bal_check.items():
+            if currency in ('USDT', 'USD', 'BNB'):
+                continue
+            free = round(float(bal_info.get('free', 0)), 6) if isinstance(bal_info, dict) else 0
+            if free <= 0:
+                continue
+            # fetch price to check if it's worth more than $1
+            try:
+                ticker = req.get(
+                    f"https://api.binance.com/api/v3/ticker/price?symbol={currency}USDT",
+                    timeout=5
+                ).json()
+                coin_price = float(ticker.get('price', 0))
+                value_usdt = free * coin_price
+                if value_usdt > 1.0:
+                    SYMBOL        = f"{currency}/USDT"
+                    in_position   = True
+                    bought_amount = free
+                    print(f"  ⚠️  Resuming with existing position: {free} {currency} (≈${value_usdt:.2f})")
+                    print(f"  ⚠️  Entry price unknown — SL/TP disabled until next fresh buy")
+                    break
+            except Exception:
+                continue
+
+    if not in_position:
+        print("  ✅ No existing position found — starting fresh")
     else:
-        in_position   = False
-        bought_amount = 0
-        entry_price   = 0
-
+        # Verify the resumed coin is actually fetchable — if not, sell it immediately
+        try:
+            ohlcv = exchange.fetch_ohlcv(SYMBOL, INTERVAL, limit=5)
+            if not ohlcv or len(ohlcv) < 2 or float(ohlcv[-1][4]) <= 0:
+                print(f"  ❌ {SYMBOL} is not fetchable on testnet — auto-selling stuck position")
+                _, full_bal = get_balance()
+                base = SYMBOL.split('/')[0]
+                stuck_amt = round(float(full_bal.get(base, {}).get('free', 0)), 6)
+                if stuck_amt > 0:
+                    order = place_order("sell", SYMBOL, stuck_amt)
+                    if order:
+                        print(f"  ✅ Auto-sold {stuck_amt} {base} — starting fresh")
+                        in_position   = False
+                        bought_amount = 0
+                        entry_price   = 0
+                        SYMBOL        = "BTC/USDT"
+                    else:
+                        print(f"  ⚠️  Auto-sell failed — bot will hold but can't trade")
+        except Exception as e:
+            print(f"  ⚠️  Could not verify {SYMBOL}: {e}")
     last_scan = 0
 
     while True:
@@ -168,15 +242,18 @@ def run():
 
             # ── Scanner: pick best coin every SCAN_EVERY seconds ──
             if time.time() - last_scan > SCAN_EVERY:
-                best_sym, best_score = get_best_coin()
-                if best_sym and best_score >= MIN_SCORE:
-                    if best_sym != SYMBOL:
-                        print(f"\n  🔄 Switching to {best_sym} (score {best_score}/100)")
-                        SYMBOL = best_sym
-                    else:
-                        print(f"  ✅ Staying on {SYMBOL} (score {best_score}/100)")
+                if in_position:
+                    print(f"  📌 In position on {SYMBOL} — skipping scanner until sold")
                 else:
-                    print(f"  ⏳ No coin above {MIN_SCORE} score — staying on {SYMBOL}")
+                    best_sym, best_score = get_best_coin()
+                    if best_sym and best_score >= MIN_SCORE:
+                        if best_sym != SYMBOL:
+                            print(f"\n  🔄 Switching to {best_sym} (score {best_score}/100)")
+                            SYMBOL = best_sym
+                        else:
+                            print(f"  ✅ Staying on {SYMBOL} (score {best_score}/100)")
+                    else:
+                        print(f"  ⏳ No coin above {MIN_SCORE} score — staying on {SYMBOL}")
                 last_scan = time.time()
 
             # ── Get current signal score + RSI ──
@@ -210,6 +287,7 @@ def run():
                 print(f"  🛑 STOP LOSS HIT — selling at ${price} (entry ${entry_price}, loss {pnl_pct:+.2f}%)")
                 order = place_order("sell", SYMBOL, base_bal)
                 if order:
+                    post_trade(SYMBOL, entry_price, price, bought_amount, "STOP_LOSS")
                     in_position = False
                     entry_price = 0
                     bought_amount = 0
@@ -219,6 +297,7 @@ def run():
                 print(f"  💰 TAKE PROFIT HIT — selling at ${price} (entry ${entry_price}, gain {pnl_pct:+.2f}%)")
                 order = place_order("sell", SYMBOL, base_bal)
                 if order:
+                    post_trade(SYMBOL, entry_price, price, bought_amount, "TAKE_PROFIT")
                     in_position = False
                     entry_price = 0
                     bought_amount = 0
@@ -241,6 +320,7 @@ def run():
                 if base_bal >= trade_amount * 0.9:
                     order = place_order("sell", SYMBOL, base_bal)
                     if order:
+                        post_trade(SYMBOL, entry_price, price, bought_amount, "SIGNAL")
                         in_position  = False
                         entry_price  = 0
                         bought_amount = 0
