@@ -35,7 +35,7 @@ function renderSignals(d) {
   document.getElementById('sigRowsWrap').innerHTML = signals.map(s => {
     const cls = s.score > 0 ? 'pos' : s.score < 0 ? 'neg' : 'zero';
     const col = s.score > 0 ? '#3fb950' : s.score < 0 ? '#f85149' : '#7d8590';
-    const pct = Math.round(Math.abs(s.score) / (s.max || 15) * 100);
+    const pct = Math.min(100, Math.max(0, Math.round(Math.abs(s.score) / (s.max || 15) * 100)));
     const val = s.name === 'OBV'
       ? (parseFloat(s.value) > 0 ? '↑ rising' : '↓ falling')
       : s.unit ? s.value + s.unit : s.value;

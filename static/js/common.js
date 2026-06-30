@@ -14,6 +14,15 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'signals') fetchBotStatus();
+  if (name === 'backtest' && _lastBacktestData) {
+    destroyAll();
+    const { chart_data: cd, equity } = _lastBacktestData;
+    buildPriceChart(cd);
+    buildRsiChart(cd);
+    buildMacdChart(cd);
+    buildVolumeChart(cd);
+    buildEquityChart(equity);
+  }
 }
 
 // Signal badge

@@ -1,4 +1,11 @@
 let priceChart, rsiChart, macdChart, volumeChart, equityChart;
+let _lastBacktestData = null;
+
+function safeCtx(id) {
+  const el = document.getElementById(id);
+  if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) return null;
+  return el.getContext('2d');
+}
 
 function destroyAll() {
   [priceChart, rsiChart, macdChart, volumeChart, equityChart]
@@ -42,6 +49,7 @@ async function runBot() {
 }
 
 function renderAll(data) {
+  _lastBacktestData = data;
   const { chart_data: cd, trades, equity, stats, current, symbol } = data;
   const profitColor = stats.total_profit >= 0 ? '#3fb950' : '#f85149';
 
@@ -79,7 +87,8 @@ function renderAll(data) {
 }
 
 function buildPriceChart(cd) {
-  const ctx = document.getElementById('priceChart').getContext('2d');
+  const ctx = safeCtx('priceChart');
+  if (!ctx) return;
   priceChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -99,7 +108,8 @@ function buildPriceChart(cd) {
 }
 
 function buildRsiChart(cd) {
-  const ctx = document.getElementById('rsiChart').getContext('2d');
+  const ctx = safeCtx('rsiChart');
+  if (!ctx) return;
   rsiChart = new Chart(ctx, {
     type: 'line',
     data: { labels:cd.timestamps, datasets:[{ label:'RSI', data:cd.rsi, borderColor:'#bc8cff', borderWidth:1.5, pointRadius:0, tension:0.2, fill:false }] },
@@ -119,7 +129,8 @@ function buildRsiChart(cd) {
 }
 
 function buildMacdChart(cd) {
-  const ctx = document.getElementById('macdChart').getContext('2d');
+  const ctx = safeCtx('macdChart');
+  if (!ctx) return;
   const histColors = cd.macd_hist.map(v => v >= 0 ? 'rgba(63,185,80,.6)' : 'rgba(248,81,73,.6)');
   macdChart = new Chart(ctx, {
     type: 'bar',
@@ -136,7 +147,8 @@ function buildMacdChart(cd) {
 }
 
 function buildVolumeChart(cd) {
-  const ctx = document.getElementById('volumeChart').getContext('2d');
+  const ctx = safeCtx('volumeChart');
+  if (!ctx) return;
   const volColors = cd.volume.map((v,i) => {
     if (i===0) return 'rgba(56,139,253,.4)';
     return cd.close[i] >= cd.close[i-1] ? 'rgba(63,185,80,.5)' : 'rgba(248,81,73,.5)';
@@ -155,7 +167,8 @@ function buildVolumeChart(cd) {
 }
 
 function buildEquityChart(equity) {
-  const ctx = document.getElementById('equityChart').getContext('2d');
+  const ctx = safeCtx('equityChart');
+  if (!ctx) return;
   const startCap = equity[0];
   equityChart = new Chart(ctx, {
     type: 'line',
@@ -199,6 +212,7 @@ function buildTradesTable(trades) {
       <tbody>${rows}</tbody>
     </table>`;
 }
+
 
 // Called from scanner's Analyze → button
 function analyzeFromScanner(symbol) {
